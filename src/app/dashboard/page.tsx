@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { api, clearCachedProfile, getApiErrorMessage, getCachedProfile, type CachedProfile } from "@/src/lib/api";
+import { api, clearAuthState, getApiErrorMessage, getCachedProfile, type CachedProfile } from "@/src/lib/api";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -26,10 +26,10 @@ export default function DashboardPage() {
       const cached = getCachedProfile();
       setProfile({
         fullName: data.full_name || cached?.fullName || "User",
-        email: cached?.email || "",
+        email: data.email || cached?.email || "",
         phone: data.phone || "",
         bio: data.bio || "",
-        avatarUrl: cached?.avatarUrl || data.avatar_url || null,
+        avatarUrl: data.avatar_url || null,
       });
     }).catch((loadError) => setError(getApiErrorMessage(loadError, "Unable to load your profile.")));
   }, [isMounted]);
@@ -39,14 +39,12 @@ export default function DashboardPage() {
     setIsLoggingOut(true);
     try {
       await api.logout();
-      clearCachedProfile();
-      router.replace("/login");
-    } catch (logoutError) {
-      setError(getApiErrorMessage(logoutError, "Unable to log out right now."));
-      clearCachedProfile();
-      router.replace("/login");
+    } catch {
+      // Logout fail ho tab bhi local auth state clear karni hai.
     } finally {
+      clearAuthState();
       setIsLoggingOut(false);
+      router.replace("/login");
     }
   }
 

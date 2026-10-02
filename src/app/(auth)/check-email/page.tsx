@@ -1,10 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useSyncExternalStore } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { api, clearPendingEmail, getApiErrorMessage, getPendingEmail } from "@/src/lib/api";
+import { onEmailVerified } from "@/src/lib/auth/verification-channel";
 
 export default function CheckEmailPage() {
+  const router = useRouter();
+
+  // Gmail wale tab me email verify hote hi ye tab khud login screen par chala jata hai.
+  // Pending email login form me pehle se bharne ke liye rehne dete hain.
+  useEffect(() => onEmailVerified(() => router.replace("/login?verified=1")), [router]);
+
   const email = useSyncExternalStore(
     () => () => {},
     getPendingEmail,
@@ -25,7 +33,7 @@ export default function CheckEmailPage() {
     setIsResending(true);
     try {
       const response = await api.resendConfirmation(email);
-      setMessage(response.message || "If the account exists, a confirmation email has been sent.");
+      setMessage(response.message || "If an unverified account exists for this email, a confirmation email has been sent.");
     } catch (resendError) {
       setError(getApiErrorMessage(resendError, "Unable to resend the confirmation email."));
     } finally {

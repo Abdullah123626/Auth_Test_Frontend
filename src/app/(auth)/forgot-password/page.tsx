@@ -5,7 +5,7 @@ import { FormEvent, useState } from "react";
 import { api, getApiErrorMessage } from "@/src/lib/api";
 
 export default function ForgotPasswordPage() {
-	const [submitted, setSubmitted] = useState(false);
+	const [submitted, setSubmitted] = useState("");
 	const [error, setError] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -15,8 +15,9 @@ export default function ForgotPasswordPage() {
 		setIsSubmitting(true);
 		const formData = new FormData(event.currentTarget);
 		try {
-			await api.forgotPassword(String(formData.get("email") || "").trim());
-			setSubmitted(true);
+			// Message jaan boojh kar generic hai: email exist kare ya na kare, same dikhana hai.
+			const response = await api.forgotPassword(String(formData.get("email") || "").trim());
+			setSubmitted(response.message || "If an account exists for this email, a password reset link has been sent.");
 		} catch (submitError) {
 			setError(getApiErrorMessage(submitError, "Unable to send the reset email."));
 		} finally {
@@ -37,7 +38,7 @@ export default function ForgotPasswordPage() {
 						<input id="forgot-email" name="email" type="email" placeholder="user@company.com" required />
 						{error && <p className="reference-error" role="alert">{error}</p>}
 						<button className="reference-submit reference-reset-submit" type="submit" disabled={isSubmitting}>{isSubmitting ? "Sending..." : "Send reset link"}</button>
-						{submitted && <p className="reference-success">If this email exists, a reset link is on its way.</p>}
+						{submitted && <p className="reference-success">{submitted}</p>}
 					</form>
 					<p className="reference-switch reference-back-link"><Link href="/login">Go to Login page</Link></p>
 				</div>

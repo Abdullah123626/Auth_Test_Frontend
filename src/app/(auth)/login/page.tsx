@@ -2,16 +2,28 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
-import { api, cacheProfile, getApiErrorMessage } from "@/src/lib/api";
+import { FormEvent, useEffect, useState, useSyncExternalStore } from "react";
+import { api, cacheProfile, clearPendingEmail, getApiErrorMessage, getPendingEmail } from "@/src/lib/api";
+
+function isJustVerified() {
+  return new URLSearchParams(window.location.search).get("verified") === "1";
+}
 
 export default function LoginPage() {
   const router = useRouter();
+  const justVerified = useSyncExternalStore(() => () => {}, isJustVerified, () => false);
+  const pendingEmail = useSyncExternalStore(() => () => {}, getPendingEmail, () => "");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
+    // Supabase ka confirmation link /login par aata hai (token ya error ke saath).
+    const { hash, search } = window.location;
+    if (hash.includes("access_token") || hash.includes("error") || search.includes("error=")) {
+      router.replace(`/email-confirmed${search}${hash}`);
+      return;
+    }
     if (api.getSession()) router.replace("/dashboard");
   }, [router]);
 
@@ -33,8 +45,10 @@ export default function LoginPage() {
       if (response.user) {
         cacheProfile({ fullName: "", email: response.user.email || "", phone: "", bio: "", avatarUrl: null });
       }
+      clearPendingEmail();
       router.replace("/dashboard");
     } catch (submitError) {
+      // 401 = "Invalid email or password", 403 = email verify nahi hui, 429 = lock (wait time ke saath).
       setError(getApiErrorMessage(submitError, "Unable to log in. Please check your details."));
     } finally {
       setIsSubmitting(false);
@@ -55,9 +69,11 @@ export default function LoginPage() {
           </div> */}
           {/* <div className="reference-divider"><span>Or continue with</span></div> */}
 
+          {justVerified && <p className="reference-success" role="status">Your email is verified. Please log in to continue.</p>}
+
           <form className="reference-login-form" onSubmit={handleSubmit}>
             <label htmlFor="email">Email</label>
-            <input id="email" name="email" type="email" placeholder="user@company.com" required />
+            <input key={pendingEmail} id="email" name="email" type="email" placeholder="user@company.com" defaultValue={pendingEmail} required />
             <div className="reference-label-row">
               <label htmlFor="password">Password</label>
             </div>

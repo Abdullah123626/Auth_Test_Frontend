@@ -27,14 +27,10 @@ export default function SignupPage() {
 
 		setIsSubmitting(true);
 		try {
-			const response = await api.signup(email, password);
+			// Signup hamesha verification-pending hota hai; session nahi milta.
+			await api.signup(email, password);
 			setPendingEmail(email);
-			if (response.requiresEmailConfirmation !== false) {
-				router.replace("/check-email");
-			} else {
-				setSuccess("Account created successfully. You can now log in.");
-				setTimeout(() => router.replace("/login"), 1600);
-			}
+			router.replace("/check-email");
 		} catch (submitError) {
 			setError(getApiErrorMessage(submitError, "Unable to create your account."));
 		} finally {
@@ -77,6 +73,7 @@ export default function SignupPage() {
 						<button className="reference-submit" type="submit" disabled={isSubmitting}>{isSubmitting ? "Creating account..." : "Create account"}</button>
 					</form>
 					<p className="reference-switch">Already have an account? <Link href="/login">Log in</Link></p>
+					<p className="reference-switch">Forgot your password? <Link href="/forgot-password">Reset it</Link></p>
 				</div>
 				<p className="reference-legal"><a href="#terms">Terms of Service</a> and <a href="#privacy">Privacy Policy</a></p>
 			</div>

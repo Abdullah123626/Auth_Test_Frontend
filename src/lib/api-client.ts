@@ -32,11 +32,12 @@ export type Profile = {
   updated_at: string;
 };
 
+// null ya "" bhejne se field clear ho jata hai
 export type UpdateProfileInput = {
-  fullName?: string;
-  phone?: string;
-  avatarUrl?: string;
-  bio?: string;
+  fullName?: string | null;
+  phone?: string | null;
+  avatarUrl?: string | null;
+  bio?: string | null;
 };
 
 type ApiErrorBody = {
@@ -45,16 +46,6 @@ type ApiErrorBody = {
   error?: string;
 };
 
-function defaultErrorMessage(statusCode: number) {
-  if (statusCode === 400) return 'The request contains invalid values.';
-  if (statusCode === 401) return 'Your session is invalid or your credentials are incorrect.';
-  if (statusCode === 403) return 'You are not allowed to perform this action.';
-  if (statusCode === 404) return 'The requested resource was not found.';
-  if (statusCode === 429) return 'Too many attempts. Please wait and try again.';
-  if (statusCode >= 500) return 'The backend service is temporarily unavailable.';
-  return `Request failed with status ${statusCode}.`;
-}
-
 export class ApiError extends Error {
   readonly statusCode: number;
   readonly details: string | string[] | undefined;
@@ -62,7 +53,7 @@ export class ApiError extends Error {
   constructor(statusCode: number, body: ApiErrorBody) {
     const message = Array.isArray(body.message)
       ? body.message.join(', ')
-      : body.message || body.error || defaultErrorMessage(statusCode);
+      : body.message || body.error || 'Request failed';
     super(message);
     this.name = 'ApiError';
     this.statusCode = statusCode;
@@ -107,9 +98,7 @@ export class BackendApiClient {
     tokenStore: TokenStore = new MemoryTokenStore(),
     options: ApiClientOptions = {},
   ) {
-    const normalizedBaseUrl = baseUrl.trim().replace(/\/$/, '');
-    if (!normalizedBaseUrl) throw new Error('API base URL is required');
-    this.baseUrl = normalizedBaseUrl;
+    this.baseUrl = baseUrl.replace(/\/$/, '');
     this.tokenStore = tokenStore;
     this.onSessionExpired = options.onSessionExpired;
   }
@@ -125,14 +114,6 @@ export class BackendApiClient {
       auth: false,
     });
   }
-
-  async resendConfirmation(email: string): Promise<{ message: string }> {
-    return this.request('/auth/resend-confirmation', {
-      method: 'POST',
-      body: { email },
-      auth: false,
-    });
-  }
   
   async login(email: string, password: string): Promise<AuthResponse> {
     const response = await this.request<AuthResponse>('/auth/login', {
@@ -142,6 +123,14 @@ export class BackendApiClient {
     });
     if (response.session) this.tokenStore.setSession(response.session);
     return response;
+  }
+
+  async resendConfirmation(email: string): Promise<{ message: string }> {
+    return this.request('/auth/resend-confirmation', {
+      method: 'POST',
+      body: { email },
+      auth: false,
+    });
   }
 
   async forgotPassword(email: string): Promise<{ message: string }> {
@@ -187,6 +176,14 @@ export class BackendApiClient {
     }
   }
 
+  // Email confirmation link click hone ke baad hi badalta hai
+  async changeEmail(newEmail: string): Promise<{ message: string }> {
+    return this.request('/auth/change-email', {
+      method: 'POST',
+      body: { newEmail },
+    });
+  }
+
   async getMyProfile(): Promise<Profile> {
     return this.request<Profile>('/profiles/me', { method: 'GET' });
   }
@@ -217,40 +214,22 @@ export class BackendApiClient {
       headers.Authorization = `Bearer ${session.accessToken}`;
     }
 
-    let response: Response;
-    try {
-      response = await fetch(`${this.baseUrl}${path}`, {
-        method: options.method,
-        headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      });
-    } catch {
-      throw new ApiError(0, { message: 'Unable to reach the backend service.' });
-    }
+    const response = await fetch(`${this.baseUrl}${path}`,{
+      method: options.method,
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    });
 
-    if (response.ok) {
-      if (response.status === 204) return undefined as T;
-      const text = await response.text();
-      if (!text.trim()) return undefined as T;
-      try {
-        return JSON.parse(text) as T;
-      } catch {
-        throw new ApiError(502, { message: 'The backend returned an invalid response.' });
-      }
-    }
+    if (response.ok) return (await response.json()) as T;
 
     let body: ApiErrorBody = {};
     try {
-      const text = await response.text();
-      if (text.trim()) {
-        const parsed = JSON.parse(text) as ApiErrorBody;
-        if (typeof parsed === 'object' && parsed !== null) body = parsed;
-      }
+      body = (await response.json()) as ApiErrorBody;
     } catch {
-      // Preserve a status-based message when the backend response is empty or malformed.
+      // Keep a useful status error when the server returns no JSON body.
     }
 
-    if (
+   if (
       response.status === 401 &&
       auth &&
       options.retryOnUnauthorized !== false &&

@@ -43,7 +43,16 @@ class BrowserTokenStore implements TokenStore {
   }
 }
 
-export const api = new BackendApiClient(apiBaseUrl, new BrowserTokenStore());
+// Refresh fail hone par (doc section 2): auth state clear karo aur login par bhejo.
+function handleSessionExpired() {
+  if (typeof window === "undefined") return;
+  clearCachedProfile();
+  window.location.replace("/login");
+}
+
+export const api = new BackendApiClient(apiBaseUrl, new BrowserTokenStore(), {
+  onSessionExpired: handleSessionExpired,
+});
 
 export function getCachedProfile(): CachedProfile | null {
   if (typeof window === "undefined") return null;
@@ -68,6 +77,13 @@ export function clearCachedProfile() {
   if (typeof window !== "undefined") window.sessionStorage.removeItem(profileCacheKey);
 }
 
+// Tokens aur cached profile dono hata deta hai (logout / password reset ke baad).
+export function clearAuthState() {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.removeItem(sessionStorageKey);
+  clearCachedProfile();
+}
+
 export function setPendingEmail(email: string) {
   if (typeof window !== "undefined") window.sessionStorage.setItem(pendingEmailKey, email);
 }
@@ -86,11 +102,14 @@ export function getApiErrorMessage(error: unknown, fallback = "Something went wr
     if (error.statusCode === 400) {
       return error.details ? (Array.isArray(error.details) ? error.details.join(" ") : error.details) : error.message;
     }
-    if (error.statusCode === 401) return "Your session is invalid or your credentials are incorrect.";
+    if (error.statusCode === 401) return error.message || "Your session has expired. Please log in again.";
     if (error.statusCode === 403) return error.message || "Please verify your email before logging in.";
-    if (error.statusCode === 404) return "The requested account or profile was not found.";
-    if (error.statusCode === 429) return "Too many attempts. Please wait a moment and try again.";
-    if (error.statusCode >= 500) return "The service is temporarily unavailable. Please try again shortly.";
+    if (error.statusCode === 409) return error.message || "This email is already in use. Please use a different email.";
+    // 429 ka message backend se aata hai aur usme wait time hota hai.
+    if (error.statusCode === 429) return error.message || "Too many attempts. Please wait a moment and try again.";
+    // Backend ka 503 message safe hai aur batata hai kya fail hua (email ya service).
+    if (error.statusCode === 503) return error.message || "The service is temporarily unavailable. Please try again shortly.";
+    if (error.statusCode >= 500) return "Something went wrong on our side. Please try again.";
     return error.message;
   }
 
@@ -103,7 +122,7 @@ export function getApiErrorMessage(error: unknown, fallback = "Something went wr
 
 export function validatePassword(password: string) {
   if (password.length < 12) return "Password must be at least 12 characters.";
-  if (password.length > 128) return "Password must be 128 characters or fewer.";
+  if (password.length > 72) return "Password must be 72 characters or fewer.";
   if (/\s/.test(password)) return "Password cannot contain spaces.";
   if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
     return "Password needs a lowercase letter, uppercase letter, number and symbol.";
